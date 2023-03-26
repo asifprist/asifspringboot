@@ -1,0 +1,34 @@
+package com.example.practice.entity;
+
+import java.sql.Date;
+import java.time.LocalDateTime;
+
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
+@Entity
+@Table(name = "case_filing")
+@
+public class CaseFiling {
+	
+	private String pre_case_state;
+	private String pre_case_district;
+	private String pca_state;
+	private String pca_district;
+	@Id
+	private String ref_num;
+	private String fano;
+	private int case_type;
+	private int claim_amount;
+	private Date cause_date;	
+	private String case_filed_in;
+	private String case_filed_by;
+	private LocalDateTime case_filing_date;
+	private String remarks;
+
+
+	
+	
+	
+}
