@@ -1,7 +1,7 @@
 GitRepositoriesView.GitDirectories=C\:\\Users\\a\\git\\repository\\.git;C\:\\Users\\a\\Desktop\\.git;E\:\\boot\\.git;
 GitRepositoriesView.GitDirectories.relative=C\:\\Users\\a\\git\\repository\\.git;C\:\\Users\\a\\Desktop\\.git;E\:\\boot\\.git;
 RepositorySearchDialogDeepSearch=false
-RepositorySearchDialogSearchPath=E\:\\boot
+RepositorySearchDialogSearchPath=E\:\\boot\\Registeration_Module
 RepositorySearchDialogSkipHidden=true
 core_autoIgnoreDerivedResources=false
 eclipse.preferences.version=1
