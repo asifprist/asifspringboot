@@ -1,2 +1,4 @@
 <?xml version="1.0" encoding="UTF-8" standalone="no"?>
-<typeInfoHistroy/>
+<typeInfoHistroy>
+    <typeInfo handle="=SecurityWith_RestApi/C:\/Users\/a\/.m2\/repository\/org\/springframework\/boot\/spring-boot-autoconfigure\/2.7.9\/spring-boot-autoconfigure-2.7.9.jar=/maven.pomderived=/true=/=/org.eclipse.jst.component.archivename=/spring-boot-autoconfigure-2.7.9.jar=/=/maven.groupId=/org.springframework.boot=/=/maven.artifactId=/spring-boot-autoconfigure=/=/maven.version=/2.7.9=/=/maven.scope=/compile=/=/maven.pomderived=/true=/=/org.eclipse.jst.component.dependency=/\/WEB-INF\/lib=/&lt;org.springframework.boot.autoconfigure.info(ProjectInfoProperties$Git.class[Git" modifiers="9" timestamp="1678971496856"/>
+</typeInfoHistroy>
