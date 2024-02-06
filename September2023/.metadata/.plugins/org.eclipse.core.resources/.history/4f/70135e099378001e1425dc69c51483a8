@@ -1,0 +1,212 @@
+package com.confonet.app.controller;
+
+import java.security.KeyFactory;
+import java.security.PrivateKey;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.util.Base64;
+
+import javax.crypto.Cipher;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.AuthenticationManager;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.core.userdetails.UserDetails;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.ExceptionHandler;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+import com.confonet.app.apiMessage.ResponseHandler;
+import com.confonet.app.dto.requestDto.LoginRequestDto;
+import com.confonet.app.dto.requestDto.RefreshTokenRequest;
+import com.confonet.app.entity.JwtResponse;
+import com.confonet.app.entity.Otp;
+import com.confonet.app.entity.RefreshToken;
+import com.confonet.app.entity.User;
+import com.confonet.app.repository.OtpRepository;
+import com.confonet.app.repository.UserRepository;
+import com.confonet.app.security.JwtTokenProvider;
+import com.confonet.app.service.RefreshTokenService;
+import com.confonet.app.service.impl.CustomUserDetailService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+
+@RestController
+@RequestMapping("/auth")
+@CrossOrigin(origins = "*", allowedHeaders = "*")
+public class AuthController {
+
+	@Autowired
+	private CustomUserDetailService userDetailsService;
+
+	@Autowired
+	private AuthenticationManager authenticationManager;
+
+	@Autowired
+	private JwtTokenProvider jwtHelper;
+
+	@Autowired
+	private BCryptPasswordEncoder passwordEncoder;
+
+	@Autowired
+	private UserRepository userRepository;
+
+	@Autowired
+	private OtpRepository otpRepository;
+	
+	@Autowired
+	private RefreshTokenService refreshTokenService;
+	
+	private Logger logger = LoggerFactory.getLogger(AuthController.class);
+
+	private static final String PRIVATE_KEY_STRING = "MIIBVAIBADANBgkqhkiG9w0BAQEFAASCAT4wggE6AgEAAkEAuAzuUMDicEvI2gxxuFRyiHNDGECQrb7bftjb82PqB5I7Ek4IX5gekZ3DMUmbN7qYH9/YWpV6Gi+LCDAfHrjEvQIDAQABAkBWFY497Qm8VmX6PsnN2om7cpXWORSyf0twuAOggoIKybqCf3etrmh49LGE8tAP1j/qFogyiXpJh29nEi1jE1/NAiEA05KFv0GRLdKxJKeTSYQoZN+HqrcxceH5p1GO1fp65y8CIQDesutJFSg0DmVv6gtlcosYWSLvTT0oOP90ZlVZgAkX0wIgWyXCrRTIQN+GJW50S7W92UdboTZu/MsHzQeb65+Pl00CIQDc55wPHaaIpLMoZYAyfIHPgDPwLqz4pjl4TD5jjmb2swIgZ2f9VbPU6DyRdEEVkyfJCUsu5tJL/XltM4HxrJLZbpc=";
+	
+	@PostMapping("/login")
+	public ResponseEntity<Object> loginUser(@RequestBody LoginRequestDto loginRequest)
+			throws JsonProcessingException, Exception {
+
+		logger.info("API Request to login user and fetch the details of user");
+		try {
+
+			String emailOrMobile = loginRequest.getEmailOrMobile();
+
+			String password = loginRequest.getUserLoginPassword();
+
+			User user = null;
+			boolean isEmail = emailOrMobile.contains("@");
+			boolean isMobileNumber = !isEmail;
+			long mobileNumber = 0;
+			logger.info("Starting point , getting amil or mobile from the user");
+			
+			if (isEmail) {
+				user = userRepository.findByEmailId(emailOrMobile).get();
+				logger.info("getting user details by email number " + user);
+				
+			} else if (isMobileNumber) {
+				mobileNumber = Long.parseLong(emailOrMobile);
+				user = userRepository.findByUserMobileNumber(mobileNumber).get();
+				logger.info("getting user details from mobile number " + user);
+			}
+
+			String decryptedPassword = null;
+			
+			try {
+				decryptedPassword = decrypt(password, PRIVATE_KEY_STRING);
+				logger.info("decrypted password " + decryptedPassword);
+				System.out.println(decryptedPassword);
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+			
+			
+
+			logger.info("API Request to login user and fetch the details of user 7");
+			if (emailOrMobile != null && passwordEncoder.matches(decryptedPassword, user.getUserLoginPassword())) {
+
+				logger.info("************** email and mobile is not null and password matched *************************");
+				// Load user details from your data store (e.g., database) using emailOrMobile
+
+				UserDetails userDetails = userDetailsService.loadUserByUsername(emailOrMobile);
+
+				// Passwords match; user is authenticated
+
+				String token = jwtHelper.generateToken(userDetails);
+				RefreshToken refreshToken = refreshTokenService.createRefreshToken(userDetails.getUsername());
+		
+				JwtResponse response = JwtResponse.builder()
+						.token(token)
+						.refreshToken(refreshToken.getRefreshToken())
+						.build();
+
+				return ResponseHandler.generateResponse("Token generated successfully", HttpStatus.OK, null, response);
+			} else {
+				// Passwords do not match
+				return ResponseHandler.generateResponse("Invalid credentials", HttpStatus.UNAUTHORIZED,
+						"invalid_password", null);
+			}
+		}  
+		
+		catch (Exception e) {
+			return ResponseHandler.generateResponse("User is not Present", HttpStatus.UNAUTHORIZED,
+					"User is not Present", null);
+		}
+	}
+		
+		   public String decrypt(String encryptedMessage  , String PRIVATE_KEY_STRING ) throws Exception {
+		    	
+		    	byte[] privateKeyBytes = Base64.getDecoder().decode(PRIVATE_KEY_STRING);
+		    	
+		    	PKCS8EncodedKeySpec keySpecPrivate = new PKCS8EncodedKeySpec(privateKeyBytes);
+		    	
+		    	 PrivateKey privateKey = KeyFactory.getInstance("RSA").generatePrivate(keySpecPrivate);
+		    	
+		        byte[] encryptedBytes = Base64.getDecoder().decode(encryptedMessage);
+		        
+		        Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding");
+		        cipher.init(Cipher.DECRYPT_MODE, privateKey);
+		        
+		        byte[] decryptedMessage = cipher.doFinal(encryptedBytes);
+		        return new String(decryptedMessage, "UTF8");
+		    } 
+	
+
+	@PostMapping(value = "/token_generate_with_otp", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<Object> loginWithOtp(@RequestBody LoginRequestDto loginRequest) {
+	    logger.info("API Request to login user with OTP");
+	    
+	    try {
+	        String emailOrMobile = loginRequest.getEmailOrMobile();
+	        String otpText = loginRequest.getOtpText();
+	        boolean isEmail = emailOrMobile.contains("@");
+	        Otp otp = null;
+
+	        if (isEmail) {
+	            otp = otpRepository.findLatestOtpByEmailId(emailOrMobile);
+	        } else {
+	            Long mobileNumber = Long.parseLong(emailOrMobile);
+	            otp = otpRepository.findLatestOtpByMobileNumber(mobileNumber);
+	        }
+
+	        if (emailOrMobile != null && otpText.equals(otp.getOtpText())) {
+	            UserDetails userDetails = userDetailsService.loadUserByUsernameAndOtp(emailOrMobile);
+	            String token = jwtHelper.generateToken(userDetails);
+	            JwtResponse response = JwtResponse.builder().token(token).build();
+	            return ResponseHandler.generateResponse("Token generated successfully with OTP", HttpStatus.OK, null, response);
+	        } else {
+	            return ResponseHandler.generateResponse("Invalid credentials", HttpStatus.UNAUTHORIZED, "invalid_password", null);
+	        }
+	    } catch (Exception e) {
+	        return ResponseHandler.generateResponse("User is not present", HttpStatus.UNAUTHORIZED, "User is not present", null);
+	    }
+	}
+
+
+	
+	@PostMapping(value = "/refresh", produces = MediaType.APPLICATION_JSON_VALUE)
+	public JwtResponse refreshJwtToken(@RequestBody RefreshTokenRequest refreshTokenRequest ) {
+	    logger.info("************* getting a refresh token *************************");
+	    RefreshToken refreshToken = refreshTokenService.verifyRefreshToken(refreshTokenRequest.getRefreshToken());
+	    User user = refreshToken.getUser();
+	    String token = this.jwtHelper.generateToken(user);
+	    
+	    
+		return JwtResponse.builder().refreshToken(refreshToken.getRefreshToken())
+				.token(token)
+				.build();
+	    
+	  
+	}
+
+
+	@ExceptionHandler(BadCredentialsException.class)
+	public ResponseEntity<String> exceptionHandler() {
+		return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body("Credentials Invalid !!");
+	}
+}

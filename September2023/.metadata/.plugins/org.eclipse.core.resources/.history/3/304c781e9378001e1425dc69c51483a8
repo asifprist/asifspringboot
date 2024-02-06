@@ -1,0 +1,420 @@
+package com.confonet.app.controller;
+
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
+import java.util.regex.Pattern;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.CrossOrigin;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.RequestPart;
+import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
+
+import com.confonet.app.apiMessage.ResponseHandler;
+import com.confonet.app.dto.requestDto.LoginRequestDto;
+import com.confonet.app.dto.requestDto.OtpValidateRequestDto;
+import com.confonet.app.dto.requestDto.userDto.AddressReqDto;
+import com.confonet.app.dto.requestDto.userDto.ResetPasswordRequest;
+import com.confonet.app.dto.requestDto.userDto.UserDocumentDto;
+import com.confonet.app.dto.requestDto.userDto.UserProfileRequestDto;
+import com.confonet.app.dto.requestDto.userDto.UserRequestDto;
+import com.confonet.app.dto.responseDto.LoginResponseDto;
+import com.confonet.app.dto.responseDto.UserResponseDto;
+import com.confonet.app.entity.PostOffice;
+import com.confonet.app.entity.User;
+import com.confonet.app.exception.BadReqException;
+import com.confonet.app.response.Response;
+import com.confonet.app.service.OtpService;
+import com.confonet.app.service.PostOfficeService;
+import com.confonet.app.service.UserService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
+
+import io.swagger.annotations.ApiOperation;
+
+@RestController
+@CrossOrigin(origins = "*", allowedHeaders = "*")
+@RequestMapping("/auth")
+public class UserController {
+
+	private static final Logger log = LoggerFactory.getLogger(UserController.class);
+
+	@Autowired
+	UserService userService;
+
+	@Autowired
+	OtpService otpService;
+
+
+	@Autowired
+	PostOfficeService postOfficeService;
+
+
+	@GetMapping("/welcome")
+	public String welcome() {
+		return "Welcome to confonet";
+	}
+
+	@PostMapping(value = "/addUser", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<Object> registration(@RequestBody UserRequestDto userRequestDto)
+			throws JsonProcessingException {
+
+		String regex = "^[A-Z](?=.{1,29}$)[A-Za-z]*(?:\\h+[A-Z][A-Za-z]*)*$";
+		String mobileNumberRegexp = "^[6789]\\d{9}$";
+		boolean nameValidation = Pattern.compile(regex).matcher(userRequestDto.getUserName()).matches();
+		boolean mobileValidation = Pattern.compile(mobileNumberRegexp)
+				.matcher(String.valueOf(userRequestDto.getMobileNumber())).matches();
+		Long mobileNumber = userRequestDto.getMobileNumber();
+
+		if (userRequestDto.getUserName().isEmpty() || !nameValidation) {
+			return ResponseHandler.generateResponse("Enter the proper name, First Letter should be Capital !!",
+					HttpStatus.BAD_REQUEST, null, null);
+		}
+
+		if (mobileNumber == null || mobileNumber.equals("")) {
+			return ResponseHandler.generateResponse("Mobile number is compulsory, it cannot be null",
+					HttpStatus.BAD_REQUEST, null, null);
+		}
+
+		if (userRequestDto.getUserLoginPassword().isEmpty()) {
+			return ResponseHandler.generateResponse("password is empty", HttpStatus.BAD_REQUEST, null, null);
+		}
+
+		if (userService.isUserExistsByMobileNumber(mobileNumber) || !mobileValidation) {
+			return ResponseHandler.generateResponse(
+					"User with the provided mobile number is already present OR mobile Number should be 10 digit and started from 6,7,8,9",
+					HttpStatus.CONFLICT, null, null);
+		}
+
+		UserResponseDto user = userService.addUser(userRequestDto);
+		return ResponseHandler.generateResponse("User is registered successfully", HttpStatus.OK, null, user);
+	}
+
+	@PostMapping(value = "/loginUser", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<Object> loginUser(@RequestBody LoginRequestDto loginRequest)
+			throws JsonProcessingException, Exception {
+
+		log.info("API Request to login user and fetch the details of user");
+		try {
+			String emailOrMobile = loginRequest.getEmailOrMobile();
+			String password = loginRequest.getUserLoginPassword();
+			LoginResponseDto user = userService.login(emailOrMobile, password);
+
+			if (user.getUserId() != null) {
+			  return ResponseHandler.generateResponse("User logged In successfully", HttpStatus.OK, null, user);
+			} else {
+				return ResponseHandler.generateResponse("User not found by this email or login", HttpStatus.BAD_REQUEST,
+						null, null);
+			}
+		} catch (Exception e) {
+			return ResponseHandler.generateResponse("Invalid credentials", HttpStatus.UNAUTHORIZED, "invalid_password",
+					null);
+		}
+	}
+
+	   @PostMapping("/logout")
+	    public ResponseEntity<Object> logoutUser(@RequestParam Integer userId) {
+	        try {
+	            userService.logout(userId );
+	            return ResponseHandler.generateResponse("User logged out successfully", HttpStatus.OK, null, null);
+	        } catch (Exception e) {
+	            return ResponseHandler.generateResponse("Logout failed", HttpStatus.INTERNAL_SERVER_ERROR, "logout_failed", null);
+	        }
+	    }
+	
+	
+
+	@PostMapping(value = "/otp_generated_for_login_and_forgetPassword", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<Object> otpGenerationForLoginAndForgetPassword(@RequestBody LoginRequestDto loginRequest)
+			throws JsonProcessingException {
+
+		log.info("API Request to login user and fetch the details of user");
+		try {
+			String emailOrMobile = loginRequest.getEmailOrMobile();
+			if (emailOrMobile != null) {
+				return ResponseHandler.generateResponse(" otp generated by email or number for the login succesfully ",
+						HttpStatus.OK, null, userService.otpGenerationForLoginAndForgetPassword(emailOrMobile));
+			} else {
+				return ResponseHandler.generateResponse("User not found by this email or login", HttpStatus.BAD_REQUEST,
+						null, null);
+			}
+		} catch (Exception e) {
+			new ResponseHandler();
+			return ResponseHandler.generateResponse(e.getMessage(), HttpStatus.BAD_REQUEST, "Otp limit Reached ", "");
+		}
+	}
+
+	
+	@PostMapping(value = "/login_with_otp", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<Object> loginWithOtp(@RequestBody LoginRequestDto loginRequest)
+			throws JsonProcessingException {
+
+		log.info("API Request to login user and fetch the details of user");
+		try {
+			String emailOrMobile = loginRequest.getEmailOrMobile();
+			String otpText = loginRequest.getOtpText();
+
+			LoginResponseDto user = userService.loginByOtp(emailOrMobile, otpText);
+			if (emailOrMobile != null) {
+				return ResponseHandler.generateResponse("User logged In succesfully ", HttpStatus.OK, null, user);
+			} else {
+				return ResponseHandler.generateResponse("User not found by this email or login", HttpStatus.BAD_REQUEST,
+						null, null);
+			}
+		} catch (Exception e) {
+			new ResponseHandler();
+			return ResponseHandler.generateResponse("Otp is not valid (incorrect otp) or number is not valid ",
+					HttpStatus.BAD_REQUEST, " Number or Otp is not available", "");
+		}
+	}
+	
+
+	@PostMapping(value = "/validate_otp", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<Object> validateOtp(@RequestBody OtpValidateRequestDto otpValidateReqDto)
+			throws JsonProcessingException {
+
+		log.info("API Request to validate otp");
+
+		try {
+
+			String emailOrMobile = otpValidateReqDto.getEmailOrMobile();
+			String otpText = otpValidateReqDto.getOtpText();
+
+			boolean validateOtp = otpService.validateOtp(emailOrMobile, otpText);
+
+			System.out.println(emailOrMobile + " and " + otpText);
+
+			if (validateOtp) {
+				return ResponseHandler.generateResponse("otp validate succesfully ", HttpStatus.OK, null, validateOtp);
+			} else {
+				return ResponseHandler.generateResponse("otp is expired", HttpStatus.BAD_REQUEST, null, null);
+			}
+		} catch (Exception e) {
+			new ResponseHandler();
+			return ResponseHandler.generateResponse(e.getMessage(), HttpStatus.BAD_REQUEST, e.getMessage(), "");
+
+		}
+
+	}
+
+	@PutMapping(value = "/uploadDocument", consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
+	public ResponseEntity<Object> uploadDocuments(@RequestPart("userDocumentDto") UserDocumentDto userDocumentDto,
+			@RequestPart("file") MultipartFile file) {
+		try {
+			if (userDocumentDto.getUserId() != null && !file.isEmpty()) {
+				UserResponseDto response = userService.uploadDocument(userDocumentDto, file);
+				if (response != null) {
+					return ResponseHandler.generateResponse("Documents Upload successfully", HttpStatus.OK, null,
+							response);
+				} else {
+					return ResponseHandler.generateResponse("Unable to upload documents",
+							HttpStatus.INTERNAL_SERVER_ERROR, null, null);
+				}
+			} else {
+				return ResponseHandler.generateResponse("Please Check the details properly.", HttpStatus.BAD_REQUEST,
+						null, null);
+			}
+		}
+
+		catch (BadReqException e) {
+			return ResponseHandler.generateResponse(e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage(),
+					"");
+		}
+		 catch (Exception e) {
+				return ResponseHandler.generateResponse("Error While Uploading the Document",
+						HttpStatus.BAD_REQUEST, "Error fetching details", "");
+			}
+
+	}
+
+	@PutMapping(value = "/addAddress", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<Object> addAddress(@RequestBody AddressReqDto addressReqDto) throws JsonProcessingException {
+
+		log.info("API Request to add address ");
+		try {
+			UserResponseDto user = userService.addAddress(addressReqDto);
+			if (Objects.isNull(user)) {
+				return ResponseHandler.generateResponse("User not found by this Id ", HttpStatus.BAD_REQUEST, null,
+						null);
+			} else {
+				return ResponseHandler.generateResponse("User Address Save succesfully ", HttpStatus.OK, null, user);
+			}
+		} catch (Exception e) {
+			new ResponseHandler();
+			return ResponseHandler.generateResponse("User Not found", HttpStatus.BAD_REQUEST, "user not available", "");
+		}
+	}
+
+	@PutMapping(value = "/addRoleEmail", produces = MediaType.APPLICATION_JSON_VALUE)
+
+	public ResponseEntity<Object> addRoleEmail(@RequestPart("userRequestDto") UserRequestDto userRequestDto,
+			@RequestPart(value = "profilePic", required = false) MultipartFile multipartFile)
+			throws JsonProcessingException {
+		log.info("API Request to add role and email and profile pic");
+		
+		try {
+			UserResponseDto user = userService.addRoleEmailDetails(userRequestDto, multipartFile);
+
+			if (user.getUserId() != null) {
+				return ResponseHandler.generateResponse("User Role and Email saved successfully", HttpStatus.OK, null,
+						user);
+			} else {
+				return ResponseHandler.generateResponse("User not found by this Id", HttpStatus.BAD_REQUEST, null,
+						null);
+			}
+		} catch (BadReqException e) {
+			return ResponseHandler.generateResponse(e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage(),
+					"");
+		}
+		
+		 catch (Exception e) {
+				return ResponseHandler.generateResponse("Error while adding the role and profile pic ",
+						HttpStatus.BAD_REQUEST, "Error fetching details", new ArrayList<>());
+			}
+	}
+
+	@PutMapping(value = "/resetPassword", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<Object> ResetPassword(@RequestBody ResetPasswordRequest resetPasswordRequest)
+			throws JsonProcessingException {
+
+		log.info("API Request to reset password ");
+
+		try {
+			if (resetPasswordRequest.getUserLoginPassword().isEmpty()) {
+				return ResponseHandler.generateResponse("Password is not there in the db", HttpStatus.BAD_REQUEST, null,
+						null);
+			}
+			UserResponseDto user = userService.resetPassword(resetPasswordRequest);
+			if (user.getUserId() != null) {
+				return ResponseHandler.generateResponse("Password reset successfully ", HttpStatus.OK, null, user);
+			} else {
+				return ResponseHandler.generateResponse("User not found by this Id ", HttpStatus.BAD_REQUEST, null,
+						null);
+			}
+		} catch (Exception e) {
+			new ResponseHandler();
+			return ResponseHandler.generateResponse("Error while processing the request",
+					HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage(), "");
+		}
+	}
+
+	@PostMapping("/findByPinCode")
+	public ResponseEntity<Object> findByPinCode(@RequestBody PostOffice postOffice) {
+		log.info("API Request to find State, District, and PostOffice by PinCode");
+		try {
+			Long pinCode = postOffice.getPinCode();
+
+			// Check if the pinCode is a 6-digit number
+			String pinCodeString = String.valueOf(pinCode);
+			if (pinCodeString.length() != 6) {
+				return ResponseHandler.generateResponse("Pin code must be a 6-digit number", HttpStatus.BAD_REQUEST,
+						"Invalid pin code format", new ArrayList<>());
+			}
+
+			List<PostOffice> statesAndDistrictByPincode = postOfficeService.findStateAndDistrictByPincode(pinCode);
+			if (statesAndDistrictByPincode.isEmpty()) {
+				return ResponseHandler.generateResponse("No record found with this pincode", HttpStatus.NOT_FOUND,
+						"No record found", new ArrayList<>());
+			}
+
+			return ResponseHandler.generateResponse("State, District, and PostOfficeName Fetched Successfully",
+					HttpStatus.OK, null, statesAndDistrictByPincode);
+		} catch (Exception e) {
+			return ResponseHandler.generateResponse("Error while fetching State, District, and PostOffice",
+					HttpStatus.BAD_REQUEST, "Error fetching details", new ArrayList<>());
+		}
+	}
+
+	@GetMapping(value = "/checkUserStatus", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<Object> getStationsById(@RequestParam Long mobileNumber)
+			throws JsonProcessingException {
+
+		return ResponseHandler.generateResponse("User details fetched successfully ", HttpStatus.OK, null,
+				userService.getuserDetaisStatusByMobileNo(mobileNumber));
+	}
+
+	@DeleteMapping(value = "/deletePresentUser", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<Object> deleteUserByIdAndNumber(@RequestBody UserRequestDto userRequestDto)
+			throws JsonProcessingException {
+		try {
+
+			String data = userService.deleteNotValidatedPresentuser(userRequestDto);
+			if (data.equals("User deleted successfully")) {
+				otpService.deleteOtpByNumber(userRequestDto);
+			}
+
+			System.out.println("data: "+data);
+				return ResponseHandler.generateResponse("Deleted the user and otp successfully ", HttpStatus.OK, null,
+						data);
+
+		} catch (Exception e) {
+	
+			new ResponseHandler();
+			return ResponseHandler.generateResponse("Error while processing the request", HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage(), "");
+		}
+	}
+	
+	@DeleteMapping(value = "/deletePresentOtp", produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<Object> deleteOtpByNumber(@RequestBody UserRequestDto userRequestDto)
+			throws JsonProcessingException {
+		try {
+
+			String data = otpService.deleteOtpByNumber(userRequestDto);
+			System.out.println("data: " + data);
+			return ResponseHandler.generateResponse("Delete the user otp successfully ", HttpStatus.OK, null, data);
+		} catch (Exception e) {
+			new ResponseHandler();
+			return ResponseHandler.generateResponse("Error while processing the request",
+					HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage(), "");
+		}
+
+	}
+
+	@PostMapping("/findUser")
+	public ResponseEntity<Object> findUserByUserId(@RequestBody User userDto) {
+		log.info("API Request to get user details by User id");
+		try {
+			 UserResponseDto user = userService.findUserByUserId(userDto);
+			return ResponseHandler.generateResponse("User Details fetched by userId successfully", HttpStatus.OK, null,user);
+		} catch (BadReqException ex) {
+			return ResponseHandler.generateResponse("User not available with Id: " + userDto.getUserId(),
+					HttpStatus.BAD_REQUEST, ex.getMessage(), null);
+		} catch (Exception e) {
+			return ResponseHandler.generateResponse("Error while processing the request",
+					HttpStatus.INTERNAL_SERVER_ERROR, e.getMessage(), null);
+		}
+	}
+
+
+	
+	@ApiOperation(value = "PUT", notes = "API for save user profile details")
+	@RequestMapping(value = "/saveUserProfile", method = RequestMethod.PUT, produces = MediaType.APPLICATION_JSON_VALUE)
+	public ResponseEntity<Object> saveUserProfile(@RequestPart("userProfileRequestDto") UserProfileRequestDto userProfileRequestDto,
+			@RequestPart(value = "profilePic", required = false) MultipartFile profilePic,
+			@RequestPart(value = "document", required = false) MultipartFile document)
+			throws IOException {
+		log.info("****** API start for save user profile details ******");
+			
+		Response response = new Response();
+		response.succeed();
+		response.setData(userService.saveUserProfile(userProfileRequestDto, profilePic, document));
+		return ResponseEntity.ok().body(response);
+	}
+
+}
+

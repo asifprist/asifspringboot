@@ -12,7 +12,7 @@ import Base.repositories.Repo;
 public class Service_Impl implements Service_Interface
 {
 	@Autowired
-	Repo repo;
+	private Repo repo;
 
 	@Override
 	public User saveUser(User user) {

@@ -23,7 +23,7 @@ public class UserController
 {  
 	
 	@Autowired
-	Service_Interface service_Interface;
+	private Service_Interface service_Interface;
 
 
 	@PostMapping("/signup")
